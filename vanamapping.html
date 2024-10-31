@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DSİ Vana Görüntüleme Sistemi</title>
+    <title>DSİ  
+        Vana Görüntüleme Sistemi</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -17,23 +18,14 @@
 
         <div class="control-panel">
             <div class="form-group">
-                <label for="vanaType">Vana Tipi</label>
-                <select id="vanaType" required>
-                    <option value="">Vana tipini seçiniz</option>
-                    <option value="ana">Ana Vanalar</option>
-                    <option value="sulama">Sulama Vanaları</option>
-                    <option value="tahliye">Tahliye Vanaları</option>
-                </select>
-            </div>
-            <div class="form-group">
                 <label>Koordinat Verisi Yükleme</label>
                 <div class="file-input-container">
                     <div class="file-input-button">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <path   d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                             <polyline points="17 8 12 3 7 8" />
-                            <line x1="12" y1="3" x2="12" y2="15" />
+                            <line x1="12" y1="3" x2="12" y2="15"   />
                         </svg>
                         Excel Dosyaları Seçin veya Sürükleyin
                     </div>
@@ -53,14 +45,16 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>  
+
     <script>
         let map, markers = [], polylines = [], coordinates = [];
 
         function initMap() {
-            map = L.map('map').setView([37.7830, 29.0946], 13);
+            map = L.map('map').setView([39.0,35.0], 5);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Esri, Maxar, Earthstar Geographics'
+
             }).addTo(map);
         }
 
@@ -101,11 +95,14 @@
                 reader.onload = (e) => {
                     try {
                         const data = new Uint8Array(e.target.result);
+
                         const workbook = XLSX.read(data, { type: 'array' });
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, {
+                            header: 1
+                        });
 
-                        const coords = jsonData.slice(1)  //1.satırı atla başlık kabul edilecek.
+                        const coords = jsonData.slice(1) //1.satırı atla başlık kabul edilecek.
                             .map(row => ({
                                 lat: parseFloat(row[0]) / 1000000,
                                 lng: parseFloat(row[1]) / 1000000
@@ -125,11 +122,11 @@
         function updateCoordinatesList() {
             const listElement = document.getElementById('coordinatesList');
             listElement.innerHTML = coordinates.map((coord, index) => `
-                <div class="coordinate-item">
-                    <span>Vana ${index + 1} (${coord.type}): ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}</span>
-                    <button onclick="removeCoordinate(${index})" class="danger">Sil</button>
-                </div>
-            `).join('');
+        <div class="coordinate-item">
+          <span>Vana ${index + 1}: ${coord.lat.toFixed(6)}, <span class="math-inline">\{coord\.lng\.toFixed\(6\)\}</span\>
+<button onclick\="removeCoordinate\(</span>{index})" class="danger">Sil</button>
+        </div>
+      `).join('');
         }
 
         function removeCoordinate(index) {
@@ -140,16 +137,15 @@
 
         async function kaydet() {
             const files = document.getElementById('excelFile').files;
-            const vanaType = document.getElementById('vanaType').value;
 
-            if (files.length === 0 || !vanaType) {
+            if (files.length === 0) {
                 return;
             }
 
             try {
                 for (const file of files) {
                     const newCoords = await readExcelFile(file);
-                    coordinates.push(...newCoords.map(coord => ({ ...coord, type: vanaType })));
+                    coordinates.push(...newCoords);
                 }
                 updateCoordinatesList();
                 document.getElementById('excelFile').value = '';
@@ -161,7 +157,7 @@
 
         async function getAddress(lat, lng) {
             try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=<span class="math-inline">\{lat\}&lon\=</span>{lng}&format=json`);
                 return response.ok ? (await response.json()).display_name : "Adres bulunamadı";
             } catch {
                 return "Adres alınamadı";
@@ -185,28 +181,11 @@
                 marker.on("click", async function () {
                     const address = await getAddress(coord.lat, coord.lng);
                     marker.bindPopup(`
-                        <b>Vana ${index + 1}</b><br>
-                        <b>Tip:</b> ${coord.type}<br>
-                        <b>Koordinat:</b> ${coord.lat}, ${coord.lng}<br>
-                        <b>Adres:</b> ${address}
-                    `).openPopup();
+            <b>Vana ${index + 1}</b><br>
+            <b>Koordinat:</b> ${coord.lat}, ${coord.lng}<br>
+            <b>Adres:</b> ${address}
+          `).openPopup();
                 });
-
-                if (index < coordinates.length - 1) {
-                    const nextCoord = coordinates[index + 1];
-                    if (coord.type === nextCoord.type) {
-                        const colors = {
-                            'ana': '#1e3799',
-                            'sulama': '#27ae60',
-                            'tahliye': '#e67e22'
-                        };
-                        const polyline = L.polyline(
-                            [[coord.lat, coord.lng], [nextCoord.lat, nextCoord.lng]],
-                            { color: colors[coord.type] || '#95a5a6', weight: 1 }  // çizgi kalınlığını gösterir.
-                        ).addTo(map);
-                        polylines.push(polyline);
-                    }
-                }
             });
 
             if (coordinates.length > 0) {
