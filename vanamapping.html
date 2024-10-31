@@ -48,17 +48,30 @@
 
     <script>
         let map, markers = [], polylines = [], coordinates = [];
+        let isFullscreen = false; // Track fullscreen state
 
         function initMap() {
             map = L.map('map').setView([39.0, 35.0], 5);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Esri, Maxar, Earthstar Geographics'
             }).addTo(map);
+
+            // Toggle fullscreen on double-click
+            map.on('dblclick', toggleFullscreen);
+        }
+
+        function toggleFullscreen() {
+            const mapContainer = document.getElementById('map');
+            isFullscreen = !isFullscreen;
+            if (isFullscreen) {
+                mapContainer.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
         }
 
         document.addEventListener('DOMContentLoaded', initMap);
 
-        // File handling events remain the same
         document.getElementById('excelFile').addEventListener('change', function (e) {
             const fileNames = Array.from(e.target.files).map(file => file.name).join(', ');
             document.getElementById('selectedFileName').textContent = fileNames || 'Dosya seçilmedi';
@@ -188,7 +201,6 @@
         function organizeCoordinates(coords) {
             const pipelines = {};
             
-            // Group coordinates by pipeline
             coords.forEach(coord => {
                 const parts = coord.label.split('-');
                 let pipelineKey = 'main';
@@ -218,7 +230,6 @@
 
             const pipelines = organizeCoordinates(coordinates);
 
-            // Draw each pipeline
             Object.values(pipelines).forEach(pipelineCoords => {
                 const points = pipelineCoords.map(coord => [coord.lat, coord.lng]);
                 const polyline = L.polyline(points, {
@@ -226,36 +237,23 @@
                     weight: 3
                 }).addTo(map);
                 polylines.push(polyline);
+
+                pipelineCoords.forEach(coord => {
+                    const markerStyle = getMarkerStyle(coord.label);
+                    const marker = L.circleMarker([coord.lat, coord.lng], markerStyle).addTo(map);
+                    marker.bindPopup(coord.label);
+                    markers.push(marker);
+                });
             });
 
-            // Add markers
-            coordinates.forEach(async (coord) => {
-                const isEnd = isEndPoint(coord.label, coordinates);
-                const style = isEnd ? 
-                    { radius: 8, fillColor: '#000000', color: '#000000', weight: 1, opacity: 1, fillOpacity: 0.8 } :
-                    getMarkerStyle(coord.label);
-
-                const marker = L.circleMarker([coord.lat, coord.lng], style).addTo(map);
-                markers.push(marker);
-
-                marker.bindPopup(`
-                    <b>${coord.label}</b><br>
-                    <b>Koordinat:</b> ${coord.lat}, ${coord.lng}
-                `);
-            });
-
-            if (coordinates.length > 0) {
-                map.fitBounds(L.latLngBounds(coordinates.map(coord => [coord.lat, coord.lng])));
-            }
+            const bounds = L.latLngBounds(coordinates.map(coord => [coord.lat, coord.lng]));
+            map.fitBounds(bounds);
         }
 
         function tumKoordinatlariTemizle() {
             coordinates = [];
             updateCoordinatesList();
-            markers.forEach(m => m.remove());
-            polylines.forEach(p => p.remove());
-            markers = [];
-            polylines = [];
+            haritayiGoster();
         }
     </script>
 </body>
