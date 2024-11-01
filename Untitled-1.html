@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DSİ Vana Görüntüleme Sistemi</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
     <link rel="stylesheet" href="style.css">
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.7.6/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.js"></script> -->
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -36,7 +40,7 @@
             </div>
             <div class="coordinates-list" id="coordinatesList"></div>
         </div>
-        <div id="map" style="height: 500px;"></div>
+        <div id="map"></div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -49,6 +53,17 @@
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Esri, Maxar, Earthstar Geographics'
             }).addTo(map);
+            map.on('dblclick', toggleFullscreen);
+        }
+
+        function toggleFullscreen() {
+            const mapContainer = document.getElementById('map');
+            isFullscreen = !isFullscreen;
+            if (isFullscreen) {
+                mapContainer.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
         }
 
         document.addEventListener('DOMContentLoaded', initMap);
@@ -56,6 +71,30 @@
         document.getElementById('excelFile').addEventListener('change', function (e) {
             const fileNames = Array.from(e.target.files).map(file => file.name).join(', ');
             document.getElementById('selectedFileName').textContent = fileNames || 'Dosya seçilmedi';
+        });
+
+        const dropZone = document.querySelector('.file-input-button');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#003875';
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.borderColor = '#ced4da';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ced4da';
+
+            const files = Array.from(e.dataTransfer.files).filter(file => file.name.match(/\.(xlsx|xls)$/));
+            if (files.length > 0) {
+                const dt = new DataTransfer();
+                files.forEach(file => dt.items.add(file));
+                document.getElementById('excelFile').files = dt.files;
+                document.getElementById('selectedFileName').textContent = files.map(f => f.name).join(', ');
+            }
         });
 
         async function readExcelFile(file) {
@@ -66,7 +105,9 @@
                         const data = new Uint8Array(e.target.result);
                         const workbook = XLSX.read(data, { type: 'array' });
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, {
+                            header: 1
+                        });
 
                         const coords = jsonData.slice(1)
                             .map(row => ({
@@ -84,6 +125,22 @@
                 reader.onerror = reject;
                 reader.readAsArrayBuffer(file);
             });
+        }
+
+        function updateCoordinatesList() {
+            const listElement = document.getElementById('coordinatesList');
+            listElement.innerHTML = coordinates.map((coord, index) => `
+                <div class="coordinate-item">
+                    <span>${coord.label}: ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}</span>
+                    <button onclick="removeCoordinate(${index})" class="danger">Sil</button>
+                </div>
+            `).join('');
+        }
+
+        function removeCoordinate(index) {
+            coordinates.splice(index, 1);
+            updateCoordinatesList();
+            haritayiGoster();
         }
 
         async function kaydet() {
@@ -106,34 +163,34 @@
             }
         }
 
-        function updateCoordinatesList() {
-            const listElement = document.getElementById('coordinatesList');
-            listElement.innerHTML = coordinates.map((coord, index) => `
-                <div class="coordinate-item">
-                    <span>${coord.label}: ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}</span>
-                    <button onclick="removeCoordinate(${index})" class="danger">Sil</button>
-                </div>
-            `).join('');
-        }
-
-        function removeCoordinate(index) {
-            coordinates.splice(index, 1);
-            updateCoordinatesList();
-            haritayiGoster();
-        }
-
-        function getMarkerStyle(label, isDsEndpoint = false) {
-            if (isDsEndpoint) {
-                return {
-                    radius: 8,
-                    fillColor: '#000000',
-                    color: '#000000',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.8
-                };
+        function shouldShowMarker(coord, allCoords) {
+            // Düz "DS" etiketi için ilk ve son koordinat kontrolü
+            if (coord.label === "DS") {
+                const dsCoords = allCoords.filter(c => c.label === "DS");
+                return coord === dsCoords[0] || coord === dsCoords[dsCoords.length - 1];
             }
 
+            // DS-1, DS-2, DS-3 gibi tek seviyeli alt etiketler için son koordinat kontrolü
+            if (/^DS-\d+$/.test(coord.label)) {
+                const currentGroupCoords = allCoords.filter(c => c.label === coord.label);
+                return coord === currentGroupCoords[currentGroupCoords.length - 1];
+            }
+
+            // AYR, SAV veya HV etiketleri için her zaman göster
+            if (coord.label.includes('AYR')) {
+                return true;
+            }
+            if (coord.label.includes('SAV')) {
+                return true;
+            }
+            if (coord.label.includes('HV')) {
+                return true;
+            }
+
+            return false;
+        }
+
+        function getMarkerStyle(label) {
             const style = {
                 radius: 8,
                 fillColor: '#000000',
@@ -144,68 +201,42 @@
             };
 
             if (label.includes('SAV')) {
-                style.fillColor = '#FF69B4';
+                style.fillColor = '#FF69B4';  // Pembe
                 style.color = '#FF69B4';
             } else if (label.includes('AYR')) {
-                style.fillColor = '#0000FF';
+                style.fillColor = '#0000FF';  // Mavi
                 style.color = '#0000FF';
             } else if (label.includes('HV')) {
-                style.fillColor = '#FFA500';
+                style.fillColor = '#FFA500';  // Turuncu
                 style.color = '#FFA500';
             }
+            // DS ve alt etiketleri için varsayılan siyah renk kullanılacak
 
             return style;
         }
 
-        async function haritayiGoster() {
-            markers.forEach(m => m.remove());
-            polylines.forEach(p => p.remove());
-            markers = [];
-            polylines = [];
+        function getMarkerStyle(label) {
+            const style = {
+                radius: 8,
+                fillColor: '#000000',
+                color: '#000000',
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            };
 
-            if (coordinates.length === 0) {
-                return;
+            if (label.includes('SAV')) {
+                style.fillColor = '#FF69B4';  // Pembe
+                style.color = '#FF69B4';
+            } else if (label.includes('AYR')) {
+                style.fillColor = '#0000FF';  // Mavi
+                style.color = '#0000FF';
+            } else if (label.includes('HV')) {
+                style.fillColor = '#FFA500';  // Turuncu
+                style.color = '#FFA500';
             }
 
-            const dsCoordinates = coordinates.filter(coord => coord.label === "DS");
-            if (dsCoordinates.length > 0) {
-                const firstDs = dsCoordinates[0];
-                const lastDs = dsCoordinates[dsCoordinates.length - 1];
-
-                const pipelines = organizeCoordinates(coordinates);
-
-                Object.values(pipelines).forEach(pipelineCoords => {
-                    const points = pipelineCoords.map(coord => [coord.lat, coord.lng]);
-                    const polyline = L.polyline(points, {
-                        color: 'blue',
-                        weight: 3
-                    }).addTo(map);
-                    polylines.push(polyline);
-                });
-
-                // İlk ve son noktaya siyah yuvarlak marker ekle
-                const firstMarkerStyle = getMarkerStyle('DS', true); // İlk DS'de özel stil uygulama
-                const lastMarkerStyle = getMarkerStyle('DS', true); // Son DS'de de aynı stil
-
-                const firstMarker = L.circleMarker([firstDs.lat, firstDs.lng], firstMarkerStyle).addTo(map);
-                firstMarker.bindPopup(firstDs.label);
-
-                const lastMarker = L.circleMarker([lastDs.lat, lastDs.lng], lastMarkerStyle).addTo(map);
-                lastMarker.bindPopup(lastDs.label);
-            }
-
-            // Diğer etiketlerin markerlarını ekleyelim
-            coordinates.forEach(coord => {
-                if (coord.label !== "DS") {
-                    const markerStyle = getMarkerStyle(coord.label);
-                    const marker = L.circleMarker([coord.lat, coord.lng], markerStyle).addTo(map);
-                    marker.bindPopup(coord.label);
-                    markers.push(marker);
-                }
-            });
-
-            const bounds = L.latLngBounds(coordinates.map(coord => [coord.lat, coord.lng]));
-            map.fitBounds(bounds);
+            return style;
         }
 
         function organizeCoordinates(coords) {
@@ -228,6 +259,40 @@
             return pipelines;
         }
 
+        async function haritayiGoster() {
+            markers.forEach(m => m.remove());
+            polylines.forEach(p => p.remove());
+            markers = [];
+            polylines = [];
+
+            if (coordinates.length === 0) {
+                return;
+            }
+
+            const pipelines = organizeCoordinates(coordinates);
+
+            Object.values(pipelines).forEach(pipelineCoords => {
+                const points = pipelineCoords.map(coord => [coord.lat, coord.lng]);
+                const polyline = L.polyline(points, {
+                    color: 'blue',
+                    weight: 3
+                }).addTo(map);
+                polylines.push(polyline);
+
+                pipelineCoords.forEach(coord => {
+                    if (shouldShowMarker(coord, coordinates)) {
+                        const markerStyle = getMarkerStyle(coord.label);
+                        const marker = L.circleMarker([coord.lat, coord.lng], markerStyle).addTo(map);
+                        marker.bindPopup(coord.label);
+                        markers.push(marker);
+                    }
+                });
+            });
+
+            const bounds = L.latLngBounds(coordinates.map(coord => [coord.lat, coord.lng]));
+            map.fitBounds(bounds);
+        }
+
         function tumKoordinatlariTemizle() {
             coordinates = [];
             updateCoordinatesList();
@@ -235,4 +300,5 @@
         }
     </script>
 </body>
+
 </html>
