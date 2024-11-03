@@ -7,6 +7,9 @@
     <title>DSİ Vana Görüntüleme Sistemi</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.7.6/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.js"></script>
+
 </head>
 
 <body>
@@ -49,6 +52,8 @@
     <script>
         let map, markers = [], polylines = [], coordinates = [];
         let isFullscreen = false; // Track fullscreen state
+
+        
 
         function initMap() {
             map = L.map('map').setView([39.0, 35.0], 5);
@@ -116,8 +121,8 @@
                         const coords = jsonData.slice(1)
                             .map(row => ({
                                 label: row[0],
-                                lat: parseFloat(row[1]) / 1000000,
-                                lng: parseFloat(row[2]) / 1000000
+                                lat: parseFloat(row[1]) / 1000000, //1000000
+                                lng: parseFloat(row[2]) / 1000000   //1000000
                             }))
                             .filter(coord => !isNaN(coord.lat) && !isNaN(coord.lng));
 
@@ -193,28 +198,28 @@
 
         function isEndPoint(label, allCoords) {
             const baseLabel = label.split('-').slice(0, -1).join('-');
-            return !allCoords.some(coord => 
+            return !allCoords.some(coord =>
                 coord.label !== label && coord.label.startsWith(baseLabel)
             );
         }
 
         function organizeCoordinates(coords) {
             const pipelines = {};
-            
+
             coords.forEach(coord => {
                 const parts = coord.label.split('-');
                 let pipelineKey = 'main';
-                
+
                 if (parts.length > 1 && parts[1] !== 'HV') {
                     pipelineKey = parts.slice(0, 2).join('-');
                 }
-                
+
                 if (!pipelines[pipelineKey]) {
                     pipelines[pipelineKey] = [];
                 }
                 pipelines[pipelineKey].push(coord);
             });
-            
+
             return pipelines;
         }
 
