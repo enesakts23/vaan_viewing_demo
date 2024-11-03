@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DSİ Vana Görüntüleme Sistemi</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.7.6/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.js"></script> -->
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>DSİ Vana Görüntüleme Sistemi</h2>
+        </div>
+        <div class="control-panel">
+            <div class="form-group">
+                <label>Koordinat Verisi Yükleme</label>
+                <div class="file-input-container">
+                    <div class="file-input-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        Excel Dosyaları Seçin veya Sürükleyin
+                    </div>
+                    <input type="file" id="excelFile" accept=".xlsx, .xls" multiple />
+                </div>
+                <div class="selected-file" id="selectedFileName"></div>
+            </div>
+            <div class="form-group">
+                <button onclick="kaydet()">Koordinatları Kaydet</button>
+                <button onclick="haritayiGoster()">Haritada Göster</button>
+                <button onclick="tumKoordinatlariTemizle()" class="danger">Tüm Koordinatları Temizle</button>
+            </div>
+            <div class="coordinates-list" id="coordinatesList"></div>
+        </div>
+        <div id="map"></div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        let map, markers = [], polylines = [], coordinates = [];
+        let isFullscreen = false;
+
+        function initMap() {
+            map = L.map('map').setView([39.0, 35.0], 5);
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Esri, Maxar, Earthstar Geographics'
+            }).addTo(map);
+            map.on('dblclick', toggleFullscreen);
+        }
+
+        function toggleFullscreen() {
+            const mapContainer = document.getElementById('map');
+            isFullscreen = !isFullscreen;
+            if (isFullscreen) {
+                mapContainer.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initMap);
+
+        document.getElementById('excelFile').addEventListener('change', function (e) {
+            const fileNames = Array.from(e.target.files).map(file => file.name).join(', ');
+            document.getElementById('selectedFileName').textContent = fileNames || 'Dosya seçilmedi';
+        });
+
+        const dropZone = document.querySelector('.file-input-button');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#003875';
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.borderColor = '#ced4da';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ced4da';
+
+            const files = Array.from(e.dataTransfer.files).filter(file => file.name.match(/\.(xlsx|xls)$/));
+            if (files.length > 0) {
+                const dt = new DataTransfer();
+                files.forEach(file => dt.items.add(file));
+                document.getElementById('excelFile').files = dt.files;
+                document.getElementById('selectedFileName').textContent = files.map(f => f.name).join(', ');
+            }
+        });
+
+        async function readExcelFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, {
+                            header: 1
+                        });
+
+                        const coords = jsonData.slice(1)
+                            .map(row => ({
+                                label: row[0],
+                                lat: parseFloat(row[1]), // Ölçeklendirme kaldırıldı
+                                lng: parseFloat(row[2])  // Ölçeklendirme kaldırıldı
+                            }))
+                            .filter(coord => !isNaN(coord.lat) && !isNaN(coord.lng));
+
+                        resolve(coords);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function updateCoordinatesList() {
+            const listElement = document.getElementById('coordinatesList');
+            listElement.innerHTML = coordinates.map((coord, index) => `
+                <div class="coordinate-item">
+                    <span>${coord.label}: ${coord.lat.toFixed(6)}, ${coord.lng.toFixed(6)}</span>
+                    <button onclick="removeCoordinate(${index})" class="danger">Sil</button>
+                </div>
+            `).join('');
+        }
+
+        function removeCoordinate(index) {
+            coordinates.splice(index, 1);
+            updateCoordinatesList();
+            haritayiGoster();
+        }
+
+        async function kaydet() {
+            const files = document.getElementById('excelFile').files;
+
+            if (files.length === 0) {
+                return;
+            }
+
+            try {
+                for (const file of files) {
+                    const newCoords = await readExcelFile(file);
+                    coordinates.push(...newCoords);
+                }
+                updateCoordinatesList();
+                document.getElementById('excelFile').value = '';
+                document.getElementById('selectedFileName').textContent = '';
+            } catch (error) {
+                console.error('Dosya okuma hatası:', error);
+            }
+        }
+
+        function getMarkerStyle(label) {
+            const style = {
+                radius: 8,
+                fillColor: '#000000',
+                color: '#000000',
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            };
+
+            if (label.includes('SAV')) {
+                style.fillColor = '#FF69B4';
+                style.color = '#FF69B4';
+            } else if (label.includes('AYR')) {
+                style.fillColor = '#0000FF';
+                style.color = '#0000FF';
+            } else if (label.includes('HV')) {
+                style.fillColor = '#FFA500';
+                style.color = '#FFA500';
+            }
+
+            return style;
+        }
+
+        function isEndPoint(label, allCoords) {
+            const baseLabel = label.split('-').slice(0, -1).join('-');
+            return !allCoords.some(coord =>
+                coord.label !== label && coord.label.startsWith(baseLabel)
+            );
+        }
+
+        function organizeCoordinates(coords) {
+            const pipelines = {};
+
+            coords.forEach(coord => {
+                const parts = coord.label.split('-');
+                let pipelineKey = 'main';
+
+                if (parts.length > 1 && parts[1] !== 'HV') {
+                    pipelineKey = parts.slice(0, 2).join('-');
+                }
+
+                if (!pipelines[pipelineKey]) {
+                    pipelines[pipelineKey] = [];
+                }
+                pipelines[pipelineKey].push(coord);
+            });
+
+            return pipelines;
+        }
+
+        async function haritayiGoster() {
+            markers.forEach(m => m.remove());
+            polylines.forEach(p => p.remove());
+            markers = [];
+            polylines = [];
+
+            if (coordinates.length === 0) {
+                return;
+            }
+
+            const pipelines = organizeCoordinates(coordinates);
+
+            Object.values(pipelines).forEach(pipelineCoords => {
+                const points = pipelineCoords.map(coord => [coord.lat, coord.lng]);
+                const polyline = L.polyline(points, {
+                    color: 'blue',
+                    weight: 3
+                }).addTo(map);
+                polylines.push(polyline);
+
+                pipelineCoords.forEach(coord => {
+                    const markerStyle = getMarkerStyle(coord.label);
+                    const marker = L.circleMarker([coord.lat, coord.lng], markerStyle).addTo(map);
+                    marker.bindPopup(coord.label);
+                    markers.push(marker);
+                });
+            });
+
+            const bounds = L.latLngBounds(coordinates.map(coord => [coord.lat, coord.lng]));
+            map.fitBounds(bounds);
+        }
+
+        function tumKoordinatlariTemizle() {
+            coordinates = [];
+            updateCoordinatesList();
+            haritayiGoster();
+        }
+    </script>
+</body>
+</html>
